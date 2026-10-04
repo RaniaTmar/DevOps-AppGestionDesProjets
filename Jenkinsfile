@@ -8,7 +8,7 @@ pipeline {
     environment {
         COMPOSE_PROJECT_NAME = 'devops-appgestiondesprojets'
         BACKEND_DIR = 'backend'
-        DOCKER_USER = 'your-dockerhub-username'   // CHANGE ME (same as your Docker Hub login)
+        DOCKER_USER = 'raniaat12'   // CHANGE ME (same as your Docker Hub login)
         TAG         = "${BUILD_NUMBER}"
     }
 
