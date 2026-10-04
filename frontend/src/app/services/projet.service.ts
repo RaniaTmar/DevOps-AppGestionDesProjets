@@ -5,7 +5,7 @@ import { Projet } from '../models/projet.model';
 @Injectable({ providedIn: 'root' })
 export class ProjetService {
   private http = inject(HttpClient);
-  private api = 'http://localhost:8080/projet';
+  private api = 'http://192.168.33.10:8081/projet';
 
   getAll()              { return this.http.get<Projet[]>(`${this.api}/all`); }
   getById(id: number)   { return this.http.get<Projet>(`${this.api}/get/${id}`); }
