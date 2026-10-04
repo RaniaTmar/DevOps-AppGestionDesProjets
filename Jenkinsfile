@@ -2,28 +2,25 @@ pipeline {
     agent any
 
     tools {
-        maven 'M3'                      // must match Manage Jenkins → Tools
+        maven 'M3'                       // must match the name in Manage Jenkins -> Tools
     }
 
     environment {
         COMPOSE_PROJECT_NAME = 'devops-appgestiondesprojets'
-        BACKEND_DIR   = '.'             // folder containing the backend pom.xml (e.g. 'backend')
-        FRONTEND_DIR  = 'frontend'      // folder containing the frontend Dockerfile
-        DOCKER_USER   = 'your-dockerhub-username'
-        BACKEND_IMAGE = "${DOCKER_USER}/gestion-projets-backend"
-        FRONTEND_IMAGE = "${DOCKER_USER}/gestion-projets-frontend"
-        NEXUS_URL     = 'http://192.168.33.10:8083/repository/maven-releases/'
+        BACKEND_DIR = 'backend'
+        DOCKER_USER = 'your-dockerhub-username'   // CHANGE ME (same as your Docker Hub login)
+        TAG         = "${BUILD_NUMBER}"
     }
 
     stages {
-        // Stage 1
+        // Stage 1: get code from Git
         stage('Checkout') {
             steps {
                 checkout scm
             }
         }
 
-        // Stage 2
+        // Stage 2: Maven compile
         stage('Maven Compile') {
             steps {
                 dir(env.BACKEND_DIR) {
@@ -32,7 +29,7 @@ pipeline {
             }
         }
 
-        // Stage 3 (tests first, so SonarQube gets the JaCoCo coverage report)
+        // Stage 3: tests first, so SonarQube receives the JaCoCo coverage report
         stage('Maven Test') {
             steps {
                 dir(env.BACKEND_DIR) {
@@ -47,7 +44,7 @@ pipeline {
             }
         }
 
-        // Stage 4 (Atelier 6)
+        // Stage 4: SonarQube analysis (Atelier 6)
         stage('SonarQube') {
             steps {
                 dir(env.BACKEND_DIR) {
@@ -66,7 +63,7 @@ pipeline {
             }
         }
 
-        // Stage 5
+        // Stage 5: build the .jar
         stage('Maven Package') {
             steps {
                 dir(env.BACKEND_DIR) {
@@ -76,7 +73,7 @@ pipeline {
             }
         }
 
-        // Stage 6
+        // Stage 6: mvn deploy -DskipTests (publish the jar to Nexus)
         stage('Maven Deploy') {
             steps {
                 dir(env.BACKEND_DIR) {
@@ -84,26 +81,17 @@ pipeline {
                                                       usernameVariable: 'NEXUS_USER',
                                                       passwordVariable: 'NEXUS_PASS')]) {
                         sh '''
-                            cat > settings-ci.xml <<EOF
-<settings>
-  <servers>
-    <server>
-      <id>nexus</id>
-      <username>${NEXUS_USER}</username>
-      <password>${NEXUS_PASS}</password>
-    </server>
-  </servers>
-</settings>
-EOF
-                            mvn deploy -DskipTests -s settings-ci.xml
+                            printf '<settings><servers><server><id>nexus</id><username>%s</username><password>%s</password></server></servers></settings>' "$NEXUS_USER" "$NEXUS_PASS" > settings-ci.xml
+                            mvn deploy -DskipTests -s settings-ci.xml && rc=0 || rc=$?
                             rm -f settings-ci.xml
+                            exit $rc
                         '''
                     }
                 }
             }
         }
 
-        // Stage 7 (continuous delivery)
+        // Stage 7: Docker image, login and push
         stage('Docker Build & Push') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
@@ -112,13 +100,13 @@ EOF
                     sh '''
                         echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
 
-                        docker build -t $BACKEND_IMAGE:${BUILD_NUMBER} -t $BACKEND_IMAGE:latest $BACKEND_DIR
-                        docker build -t $FRONTEND_IMAGE:${BUILD_NUMBER} -t $FRONTEND_IMAGE:latest $FRONTEND_DIR
+                        docker compose build backend frontend
+                        docker compose push backend frontend
 
-                        docker push $BACKEND_IMAGE:${BUILD_NUMBER}
-                        docker push $BACKEND_IMAGE:latest
-                        docker push $FRONTEND_IMAGE:${BUILD_NUMBER}
-                        docker push $FRONTEND_IMAGE:latest
+                        for svc in backend frontend; do
+                            docker tag $DOCKER_USER/gestion-projets-$svc:$TAG $DOCKER_USER/gestion-projets-$svc:latest
+                            docker push $DOCKER_USER/gestion-projets-$svc:latest
+                        done
 
                         docker logout
                     '''
@@ -126,11 +114,11 @@ EOF
             }
         }
 
-        // Stage 8
+        // Stage 8: docker compose up
         stage('Docker Compose Up') {
             steps {
                 sh 'docker compose down || true'
-                sh 'docker compose up -d --build'
+                sh 'docker compose up -d'
             }
         }
 
