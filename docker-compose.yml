@@ -16,6 +16,7 @@ services:
       retries: 10
 
   backend:
+    image: ${DOCKER_USER:-local}/gestion-projets-backend:${TAG:-latest}
     build: ./backend
     container_name: backend-app
     depends_on:
@@ -31,6 +32,7 @@ services:
       - app-network
 
   frontend:
+    image: ${DOCKER_USER:-local}/gestion-projets-frontend:${TAG:-latest}
     build: ./frontend
     container_name: frontend-app
     depends_on:
